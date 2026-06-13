@@ -10,7 +10,6 @@ app.py
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -31,10 +30,6 @@ logging.basicConfig(level=logging.WARNING)
 
 # ── 상수 ────────────────────────────────────────────────────────────────────────
 
-PORTFOLIO_PATH = os.getenv(
-    "PORTFOLIO_PATH", os.path.join(PROJECT_ROOT, "portfolio.json")
-)
-
 # 빈 화면 제안 카드 (아이콘 · 카테고리 · 실제 쿼리)
 SUGGESTIONS = [
     ("종목 분석",  "삼성전자 오늘 왜 떨어졌어?"),
@@ -50,7 +45,7 @@ st.set_page_config(
     page_title="재테크 AI",
     page_icon="💎",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -58,18 +53,17 @@ st.set_page_config(
 
 _CSS = """
 <style>
-/* ── 폰트: 2종만 사용 ── */
-/* 1. 본문 — 시스템 한국어 산세리프 */
+/* ── 폰트 ── */
 * {
     font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system,
                  BlinkMacSystemFont, 'Malgun Gothic', sans-serif !important;
 }
-/* 2. 로그 전용 — 등폭 (본문과 크게 다르지 않은 크기) */
-[data-testid="stExpander"] .stMarkdown p {
-    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace !important;
-    font-size: 12px !important;
-    line-height: 1.85 !important;
-    color: rgba(200, 220, 255, 0.68) !important;
+/* Streamlit 아이콘은 전용 폰트를 유지해야 ligature 문자열이 아이콘으로 보인다. */
+.material-symbols-rounded,
+.material-symbols-outlined,
+[data-testid="stIconMaterial"] {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined' !important;
+    font-feature-settings: 'liga' !important;
 }
 
 /* ── 앱 전체 배경 ── */
@@ -83,8 +77,9 @@ _CSS = """
     display: none !important;
 }
 
-/* ── 메인 컨테이너: 중앙 정렬 + 여백 ── */
-.block-container {
+/* ── 메인 컨테이너: 중앙 정렬 ── */
+.block-container,
+[data-testid="stAppViewBlockContainer"] {
     padding-top: 1.2rem !important;
     padding-bottom: 6rem !important;
     max-width: 820px !important;
@@ -92,7 +87,7 @@ _CSS = """
     margin-right: auto !important;
 }
 
-/* ── 하단 입력 영역: 앱 배경 그라디언트와 동일 톤으로 통일 ── */
+/* ── 하단 입력 영역 투명 ── */
 [data-testid="stBottom"],
 [data-testid="stBottom"] > div,
 [data-testid="stBottomBlockContainer"],
@@ -104,35 +99,68 @@ _CSS = """
 /* ── Streamlit 푸터 숨김 ── */
 footer, [data-testid="stStatusWidget"] { display: none !important; }
 
-/* ── 사이드바 — 유리 패널 ── */
-[data-testid="stSidebar"] {
-    background: rgba(255, 255, 255, 0.04) !important;
-    backdrop-filter: blur(24px) !important;
-    -webkit-backdrop-filter: blur(24px) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.09) !important;
-}
-[data-testid="stSidebarContent"] p,
-[data-testid="stSidebarContent"] span,
-[data-testid="stSidebarContent"] label {
-    color: rgba(255, 255, 255, 0.82) !important;
+/* ── 사이드바 완전 숨김 ── */
+[data-testid="stSidebar"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {
+    display: none !important;
 }
 
-/* ── 전역 텍스트 색상 ── */
+/* ── 전역 텍스트 — p/li/strong/em만, span은 제외 ── */
 .stMarkdown p, .stMarkdown li,
 .stMarkdown strong, .stMarkdown em {
     color: rgba(255, 255, 255, 0.88) !important;
 }
+/* stMarkdown 안 span만 허용 (report 본문 텍스트) */
+[data-testid="stChatMessage"] .stMarkdown span {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
 
-/* ── 리포트 헤딩: H1~H3 모두 작게 (본문과 비슷한 크기, bold로만 구분) ── */
+/* ── 리포트 헤딩: h1~h4 모두 14px bold ── */
+[data-testid="stChatMessage"] h1,
+[data-testid="stChatMessage"] h2,
+[data-testid="stChatMessage"] h3,
+[data-testid="stChatMessage"] h4,
 [data-testid="stChatMessage"] .stMarkdown h1,
 [data-testid="stChatMessage"] .stMarkdown h2,
-[data-testid="stChatMessage"] .stMarkdown h3 {
-    font-size: 15px !important;
+[data-testid="stChatMessage"] .stMarkdown h3,
+[data-testid="stChatMessage"] .stMarkdown h4 {
+    font-size: 14px !important;
     font-weight: 700 !important;
-    color: rgba(255, 255, 255, 0.85) !important;
-    margin: 0.9rem 0 0.25rem 0 !important;
+    color: rgba(255, 255, 255, 0.88) !important;
+    margin: 0.9rem 0 0.2rem 0 !important;
     border-bottom: none !important;
     letter-spacing: -0.01em !important;
+    background: none !important;
+}
+
+/* ── 채팅 내 텍스트 흰색 ── */
+[data-testid="stChatMessage"] p,
+[data-testid="stChatMessage"] li,
+[data-testid="stChatMessage"] strong,
+[data-testid="stChatMessage"] em,
+[data-testid="stChatMessage"] td,
+[data-testid="stChatMessage"] th {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+
+/* ── 테이블 ── */
+[data-testid="stChatMessage"] table { background: transparent !important; border: none !important; }
+[data-testid="stChatMessage"] thead tr,
+[data-testid="stChatMessage"] thead th {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: rgba(255, 255, 255, 0.55) !important;
+    font-size: 12px !important; font-weight: 600 !important;
+    border: none !important; padding: 7px 12px !important;
+}
+[data-testid="stChatMessage"] tbody tr { background: transparent !important; }
+[data-testid="stChatMessage"] tbody tr:hover { background: rgba(255,255,255,0.04) !important; }
+[data-testid="stChatMessage"] tbody td {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-top: none !important; border-left: none !important; border-right: none !important;
+    font-size: 13px !important; padding: 7px 12px !important;
 }
 
 /* ── AI 채팅 말풍선 — 유리 카드 ── */
@@ -150,9 +178,16 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     overflow: visible !important;
     word-break: keep-all !important;
 }
+/* assistant 기본 아바타 제거 */
+[data-testid="stChatMessageAvatarAssistant"] {
+    display: none !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+    column-gap: 0 !important;
+}
 
-/* ── 채팅 입력창 — 4개 박스와 동일한 유리 톤 ── */
-/* 내부 요소 흰색 전부 제거 */
+/* ── 채팅 입력창 ── */
 [data-testid="stChatInput"],
 [data-testid="stChatInput"] *,
 [data-testid="stChatInput"] div,
@@ -161,7 +196,6 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     background: transparent !important;
     background-color: transparent !important;
 }
-/* 외곽 유리 카드 (제안 박스와 동일 스타일) */
 [data-testid="stChatInput"] > div {
     background: rgba(255, 255, 255, 0.07) !important;
     backdrop-filter: blur(20px) !important;
@@ -173,13 +207,11 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
 [data-testid="stChatInput"] textarea {
     color: rgba(255, 255, 255, 0.9) !important;
     caret-color: #3182F6 !important;
+    font-size: 14px !important;
 }
 [data-testid="stChatInput"] textarea::placeholder {
     color: rgba(255, 255, 255, 0.28) !important;
     font-size: 13px !important;
-}
-[data-testid="stChatInput"] textarea {
-    font-size: 14px !important;
 }
 
 /* ── expander — 유리 패널 ── */
@@ -190,10 +222,29 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
 }
-[data-testid="stExpander"] summary p,
-[data-testid="stExpander"] summary span {
-    color: rgba(255, 255, 255, 0.48) !important;
+/* details/summary 기본 흰 배경 제거 — hover/non-hover 모두 투명하게 */
+[data-testid="stExpander"] details,
+[data-testid="stExpander"] details > summary,
+[data-testid="stExpander"] details > summary:hover,
+[data-testid="stExpander"] details > div {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+/* 라벨 p만 — summary span/kbd는 접근성("keyboard...") 요소라 건드리지 않음 */
+[data-testid="stExpander"] summary p {
+    color: rgba(255, 255, 255, 0.55) !important;
     font-size: 12px !important;
+}
+/* 토글 화살표 가시성 (SVG/Material Icon 모두) */
+[data-testid="stExpander"] summary svg {
+    fill: rgba(255, 255, 255, 0.5) !important;
+    stroke: rgba(255, 255, 255, 0.5) !important;
+    min-width: 16px !important;
+    min-height: 16px !important;
+}
+[data-testid="stExpander"] summary .material-symbols-rounded {
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 20px !important;
 }
 
 /* ── 버튼 ── */
@@ -220,10 +271,9 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     box-shadow: 0 0 18px rgba(49, 130, 246, 0.24) !important;
 }
 .stButton > button:active { transform: scale(0.97) !important; }
-/* 버튼 내부 텍스트 좌측 정렬 — Streamlit 내부 flex 오버라이드 */
+/* 버튼 텍스트 좌측 정렬 — span 건드리지 않음 */
 .stButton > button > div,
-.stButton > button p,
-.stButton > button span {
+.stButton > button p {
     text-align: left !important;
     justify-content: flex-start !important;
     margin: 0 !important;
@@ -246,7 +296,7 @@ code {
 a { color: #60A5FA !important; }
 a:hover { color: #93C5FD !important; text-decoration: underline; }
 
-/* ── 마크다운 표 ── */
+/* ── 전역 마크다운 표 ── */
 table { border-collapse: collapse; width: 100%; }
 thead th {
     background: rgba(255, 255, 255, 0.07) !important;
@@ -268,8 +318,6 @@ tbody td {
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
-/* ── spinner ── */
-[data-testid="stSpinner"] p { color: rgba(255,255,255,0.55) !important; }
 </style>
 """
 
@@ -408,7 +456,7 @@ def _render_messages() -> None:
         if msg["role"] == "user":
             st.markdown(_user_bubble(msg["content"]), unsafe_allow_html=True)
         else:
-            with st.chat_message("assistant", avatar="🤖"):
+            with st.chat_message("assistant"):
                 _render_assistant_body(msg)
 
 
@@ -523,74 +571,6 @@ def _render_clarification_ui() -> None:
                 st.rerun()
 
 
-# ── 사이드바 ──────────────────────────────────────────────────────────────────
-
-def _render_sidebar() -> None:
-    with st.sidebar:
-        st.markdown(
-            '<p style="font-size:19px;font-weight:700;color:white;'
-            'margin-bottom:0.1rem;letter-spacing:-0.01em;">내 포트폴리오</p>'
-            '<p style="font-size:12px;color:rgba(255,255,255,0.36);'
-            'margin-bottom:1.1rem;">portfolio.json 기준</p>',
-            unsafe_allow_html=True,
-        )
-
-        holdings = _load_portfolio()
-
-        if holdings is None:
-            st.markdown(
-                '<p style="font-size:13px;color:rgba(255,255,255,0.32);">'
-                'portfolio.json 없음<br>'
-                'PORTFOLIO_PATH 환경변수로 경로를 지정하세요.</p>',
-                unsafe_allow_html=True,
-            )
-        elif not holdings:
-            st.markdown(
-                '<p style="font-size:13px;color:rgba(255,255,255,0.32);">종목 없음</p>',
-                unsafe_allow_html=True,
-            )
-        else:
-            for h in holdings:
-                name   = h.get("name", h.get("ticker", "?"))
-                shares = h.get("shares", 0)
-                avg    = h.get("avg_price", 0)
-                st.markdown(
-                    _glass_div(
-                        f'<span style="font-size:14px;font-weight:600;'
-                        f'color:rgba(255,255,255,0.88);">{name}</span>'
-                        f'<span style="font-size:12px;color:rgba(255,255,255,0.34);'
-                        f'margin-left:6px;">{shares}주</span><br>'
-                        f'<span style="font-size:12px;color:rgba(255,255,255,0.48);">'
-                        f'평균 {avg:,.0f}원</span>',
-                        bg="rgba(255,255,255,0.05)",
-                        border="rgba(255,255,255,0.08)",
-                        radius="10px",
-                        padding="0.5rem 0.85rem",
-                        extra="margin-bottom:0.35rem;",
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-            if st.button("포트폴리오 전체 분석", use_container_width=True):
-                _submit("내 포트폴리오 전체 분석해줘")
-
-        st.markdown("---")
-        if st.button("대화 초기화", use_container_width=True):
-            st.session_state.messages              = []
-            st.session_state.pending_clarification = None
-            st.rerun()
-
-
-def _load_portfolio() -> list[dict] | None:
-    if not os.path.exists(PORTFOLIO_PATH):
-        return None
-    try:
-        with open(PORTFOLIO_PATH, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        return raw if isinstance(raw, list) else raw.get("holdings", [])
-    except Exception:
-        return []
 
 
 # ── 쿼리 제출 ────────────────────────────────────────────────────────────────
@@ -617,9 +597,12 @@ def _handle_processing() -> bool:
     if not st.session_state.get("processing"):
         return False
 
-    query    = st.session_state.pop("_pending_query", "")
-    ticker   = st.session_state.pop("_confirmed_ticker", None)
-    name_val = st.session_state.pop("_confirmed_name", None)
+    query    = st.session_state.get("_pending_query") or ""
+    ticker   = st.session_state.get("_confirmed_ticker")
+    name_val = st.session_state.get("_confirmed_name")
+    for _k in ("_pending_query", "_confirmed_ticker", "_confirmed_name"):
+        if _k in st.session_state:
+            del st.session_state[_k]
 
     if not query:
         st.session_state.processing = False
@@ -631,27 +614,28 @@ def _handle_processing() -> bool:
     workflow = _get_workflow()
     monitor  = MonitoringService()
 
-    with st.chat_message("assistant", avatar="🤖"):
-        # 로딩 중 사고 과정 토글 — 클릭하면 "분석 중..." 메시지 노출
-        with st.expander("에이전트 사고 과정 보기", expanded=False):
-            st.markdown(
-                '<p style="font-size:13px;color:rgba(200,220,255,0.6);">'
-                '분석 중입니다...</p>',
-                unsafe_allow_html=True,
-            )
+    # 이전 빈 화면의 추천 버튼이 긴 처리 중 stale UI로 남지 않게 즉시 숨긴다.
+    st.markdown(
+        "<style>.stButton { display: none !important; }</style>",
+        unsafe_allow_html=True,
+    )
 
-        with st.spinner("에이전트가 분석 중입니다..."):
-            try:
-                if ticker:
-                    result: WorkflowResult = workflow.run_with_confirmed_ticker(
-                        query, ticker, name_val, on_log=monitor.add
-                    )
-                else:
-                    result = workflow.run(query, on_log=monitor.add)
-            except Exception as e:
-                st.error(f"예상치 못한 오류: {e}")
-                st.session_state.processing = False
-                return True
+    with st.chat_message("assistant"):
+        # 처리 완료 후 실제 로그로 교체되는 사고 과정 토글
+        with st.expander("에이전트 사고 과정 보기", expanded=False):
+            st.empty()
+
+        try:
+            if ticker:
+                result: WorkflowResult = workflow.run_with_confirmed_ticker(
+                    query, ticker, name_val, on_log=monitor.add
+                )
+            else:
+                result = workflow.run(query, on_log=monitor.add)
+        except Exception as e:
+            st.error(f"예상치 못한 오류: {e}")
+            st.session_state.processing = False
+            return True
 
     log_text   = monitor.format_for_expander()
     summary    = monitor.format_summary()
@@ -701,14 +685,13 @@ def _build_result_msg(
 
 def main() -> None:
     _init_session()
-    _render_sidebar()
 
     # 처리 중: 히스토리 + 스피너 + 결과 렌더링 후 st.rerun() 호출
     if _handle_processing():
         return  # st.rerun()이 이미 호출되었으므로 여기에 도달하지 않음
 
     if not st.session_state.messages:
-        # 빈 화면: CLOVA X 스타일 제안 카드
+        # 빈 화면
         _render_empty_state()
     else:
         # 채팅 화면: 메시지 히스토리 + 종목 선택 UI(pending 시)
