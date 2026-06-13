@@ -8,8 +8,9 @@ KRX 전체 종목 목록을 pyKrx로 조회해 자연어 회사명을 ticker로 
                      → 신뢰도 MID  → 후보 반환   (is_confirmed=False)
                      → 신뢰도 LOW  → 결과 없음    (candidates=[])
 
-종목 목록은 pyKrx에서 하루 1회 조회 후 로컬 JSON 캐시에 저장한다.
-주말·공휴일은 가장 최근 거래일 데이터를 사용한다.
+종목 목록은 로컬 큐레이션 목록과 portfolio.json을 기본으로 구성하고,
+Yahoo Finance에서 섹터를 보완해 일별 JSON 캐시에 저장한다.
+pyKrx 조회는 STOCK_CATALOG_PROVIDER=pykrx로 명시한 경우에만 시도한다.
 """
 
 import json
@@ -19,7 +20,6 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Optional
 
-from pykrx import stock as krx
 from rapidfuzz import fuzz, process
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class ResolveResult:
 
 # ─── 캐시 관리 ──────────────────────────────────────────────────────────────
 def _last_business_day() -> str:
-    """주말이면 가장 최근 금요일로 내린다 (pyKrx는 거래일만 지원)."""
+    """캐시 기준일을 반환한다. 주말이면 가장 최근 금요일을 사용한다."""
     d = date.today()
     if d.weekday() == 5:    # 토요일
         d -= timedelta(days=1)
@@ -128,9 +128,10 @@ def _build_fallback_catalog(biz_date: str) -> dict:
     ]
     return {
         "date": biz_date,
+        "generated_at": date.today().isoformat(),
         "stocks": stocks,
         "name_to_ticker": {stock["name"]: stock["ticker"] for stock in stocks},
-        "source": "fallback",
+        "source": "local+yahoo",
     }
 
 
@@ -148,6 +149,8 @@ def _fetch_from_krx(biz_date: str) -> dict:
       "name_to_ticker": {"삼성전자": "005930.KS", ...}
     }
     """
+    from pykrx import stock as krx
+
     stocks: list[dict] = []
     name_to_ticker: dict[str, str] = {}
 
@@ -156,10 +159,10 @@ def _fetch_from_krx(biz_date: str) -> dict:
         try:
             raw_tickers = krx.get_market_ticker_list(biz_date, market=market)
         except Exception as e:
-            logger.error("[stock_resolver] %s 종목 목록 조회 실패: %s", market, e)
+            logger.debug("[stock_resolver] %s 종목 목록 조회 실패: %s", market, e)
             continue
         if not raw_tickers:
-            logger.warning("[stock_resolver] %s 종목 목록이 비어 있습니다.", market)
+            logger.debug("[stock_resolver] %s 종목 목록이 비어 있습니다.", market)
             continue
 
         # 종목 목록이 있을 때만 섹터 정보를 조회한다.
@@ -167,7 +170,7 @@ def _fetch_from_krx(biz_date: str) -> dict:
         try:
             sector_df = krx.get_market_sector_classifications(biz_date, market)
         except Exception as e:
-            logger.warning("[stock_resolver] %s 섹터 조회 실패 (섹터 없이 계속): %s", market, e)
+            logger.debug("[stock_resolver] %s 섹터 조회 실패: %s", market, e)
 
         for raw_ticker in raw_tickers:
             full_ticker = raw_ticker + suffix
@@ -223,10 +226,15 @@ def _load_cache() -> dict:
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("[stock_resolver] 캐시 손상, 재빌드합니다: %s", e)
 
-    logger.info("[stock_resolver] KRX 종목 목록 갱신 중 (거래일: %s)…", biz_date)
-    data = _fetch_from_krx(biz_date)
-    if not _is_valid_cache(data):
-        logger.warning("[stock_resolver] KRX 종목 조회 실패, 로컬 폴백 목록을 사용합니다.")
+    provider = os.getenv("STOCK_CATALOG_PROVIDER", "local").lower()
+    if provider == "pykrx":
+        logger.info("[stock_resolver] pyKrx 종목 목록 갱신 중 (기준 거래일: %s)…", biz_date)
+        data = _fetch_from_krx(biz_date)
+        if not _is_valid_cache(data):
+            logger.info("[stock_resolver] pyKrx 조회 불가, 로컬+Yahoo 목록을 사용합니다.")
+            data = _build_fallback_catalog(biz_date)
+    else:
+        logger.info("[stock_resolver] 로컬+Yahoo 종목 목록 생성 중 (기준 거래일: %s)…", biz_date)
         data = _build_fallback_catalog(biz_date)
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
