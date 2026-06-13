@@ -118,12 +118,21 @@ class ReportGeneratorAgent:
         sections: list[str] = []
 
         if news and news.news_items:
-            items_md = "\n".join(
-                f"[{i + 1}] [{item.impact}] {item.title}\n"
-                f"    출처: {item.source} | 날짜: {item.published_at}\n"
-                f"    요약: {item.summary}"
-                for i, item in enumerate(news.news_items)
-            )
+            item_blocks = []
+            for i, item in enumerate(news.news_items):
+                # 링크가 있으면 클릭 가능한 제목으로, 없으면 일반 텍스트
+                title_md = (
+                    f"[{item.title}]({item.url})"
+                    if item.url else item.title
+                )
+                block = (
+                    f"[{i + 1}] [{item.impact}] {title_md}\n"
+                    f"    출처: {item.source} | 날짜: {item.published_at}"
+                )
+                if item.summary:
+                    block += f"\n    요약: {item.summary}"
+                item_blocks.append(block)
+            items_md = "\n".join(item_blocks)
             sections.append(f"## 수집된 뉴스\n{items_md}")
 
         if chart:
@@ -183,6 +192,7 @@ class ReportGeneratorAgent:
             "   - 이번 분석의 핵심을 15단어 이내 한 문장으로\n\n"
             "2. ## 주요 뉴스 (뉴스 데이터가 있는 경우)\n"
             "   - 중요도 높은 순서대로 최대 3개 정리\n"
+            "   - 제목에 링크가 있으면 마크다운 링크([제목](URL)) 형식을 그대로 유지할 것\n"
             "   - 각 뉴스가 주가에 어떤 영향을 줄 수 있는지 1문장 추가\n\n"
             "3. ## 차트 분석 (차트 데이터가 있는 경우)\n"
             "   - 초보자 해설을 기반으로 주가 현황을 정리\n"
