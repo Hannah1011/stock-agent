@@ -32,10 +32,10 @@ from schemas.models import AgentLog
 
 # 상태 배지 텍스트 (마크다운 인라인 코드 블록으로 표시)
 _STATUS_BADGES: dict[str, str] = {
-    "running": "[RUNNING]",
-    "done":    "[DONE]   ",
-    "error":   "[ERROR]  ",
-    "skipped": "[SKIP]   ",
+    "running": "RUNNING",
+    "done":    "DONE",
+    "error":   "ERROR",
+    "skipped": "SKIP",
 }
 
 # 사람이 읽기 쉬운 모델명 축약
@@ -114,10 +114,9 @@ class MonitoringService:
         lines: list[str] = []
 
         for log in logs:
-            badge       = _STATUS_BADGES.get(log.status, "[?]      ")
+            badge       = _STATUS_BADGES.get(log.status, "?")
             model_label = _MODEL_LABELS.get(log.model_used or "", "")
             model_info  = f" ({model_label})" if model_label else ""
-            agent_col   = f"{log.agent}{model_info}".ljust(24)
 
             if log.status == "running":
                 running_times[log.agent] = log.timestamp
@@ -126,10 +125,10 @@ class MonitoringService:
                 start_ts    = running_times.get(log.agent)
                 elapsed_str = self._format_elapsed(start_ts, log.timestamp) if start_ts else ""
 
-            line = f"{agent_col}  `{badge}`  {log.action}{elapsed_str}"
+            line = f"`{badge}`  **{log.agent}**{model_info}  {log.action}{elapsed_str}"
 
             if log.status == "error" and log.error:
-                line += f"\n> {log.error}"
+                line += f"\n\n> {log.error}"
 
             lines.append(line)
 
