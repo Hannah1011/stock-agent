@@ -181,14 +181,21 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
 [data-testid="stChatMessageContent"] {
     overflow: visible !important;
     word-break: keep-all !important;
+    width: 100% !important;
+    margin: 0 !important;
 }
 /* assistant 기본 아바타 제거 */
 [data-testid="stChatMessageAvatarAssistant"] {
     display: none !important;
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
-    grid-template-columns: 0 minmax(0, 1fr) !important;
-    column-gap: 0 !important;
+    gap: 0 !important;
+    padding: 1rem !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+    > [data-testid="stChatMessageContent"] {
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
 }
 
 /* ── 채팅 입력창 ── */
