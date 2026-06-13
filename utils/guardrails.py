@@ -80,6 +80,11 @@ _BLOCKED_PHRASES: list[str] = [
 ]
 
 DISCLAIMER = "본 정보는 투자 판단을 위한 참고 자료이며, 투자 권유가 아닙니다."
+INVESTMENT_CAUTION_HEADING = "### 투자 유의사항"
+INVESTMENT_CAUTION_BODY = (
+    "- 주가와 시장 상황은 예상과 다르게 움직일 수 있으며 원금 손실이 발생할 수 있습니다.\n"
+    "- 뉴스, 기술적 지표, 과거 수익률만으로 투자 결정을 내리지 말고 여러 정보를 함께 확인하세요."
+)
 
 # 정규식 객체 (모듈 로딩 시 1회 컴파일)
 _RE_FINANCE = re.compile(
@@ -122,7 +127,25 @@ def filter_investment_advice(text: str) -> str:
 
 
 def ensure_disclaimer(text: str) -> str:
-    """리포트 말미에 면책 문구가 없으면 추가한다."""
-    if DISCLAIMER not in text:
-        text = text.rstrip() + f"\n\n---\n{DISCLAIMER}"
-    return text
+    """면책 문구가 리포트의 마지막에 정확히 한 번 오도록 정리한다."""
+    text = text.replace(DISCLAIMER, "").rstrip()
+    return text + f"\n\n---\n{DISCLAIMER}"
+
+
+def ensure_investment_caution_section(text: str) -> str:
+    """투자 유의사항 섹션을 항상 완결된 표준 문구로 정규화한다."""
+    heading_match = re.search(
+        r"(?m)^#{1,6}\s*투자 유의사항\s*$",
+        text,
+    )
+    if not heading_match:
+        return text.rstrip() + f"\n\n{INVESTMENT_CAUTION_HEADING}\n{INVESTMENT_CAUTION_BODY}"
+
+    body_start = heading_match.end()
+    next_heading = re.search(r"(?m)^#{1,6}\s+", text[body_start:])
+    body_end = body_start + next_heading.start() if next_heading else len(text)
+    return (
+        text[:heading_match.start()].rstrip()
+        + f"\n\n{INVESTMENT_CAUTION_HEADING}\n{INVESTMENT_CAUTION_BODY}"
+        + text[body_end:]
+    )

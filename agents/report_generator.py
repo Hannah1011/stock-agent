@@ -40,12 +40,18 @@ from schemas.models import (
     TermAnnotation,
     TermExplainerOutput,
 )
-from utils.guardrails import ensure_disclaimer, filter_investment_advice
+from utils.guardrails import (
+    ensure_disclaimer,
+    ensure_investment_caution_section,
+    filter_investment_advice,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 _MODEL = ModelTier.STANDARD.value   # claude-sonnet-4-6: 최종 합성은 고품질 모델
+_REPORT_MAX_TOKENS = 4096
+_CONTINUATION_MAX_TOKENS = 2048
 
 
 class ReportGeneratorError(Exception):
@@ -86,6 +92,7 @@ class ReportGeneratorAgent:
 
         full_md = self._generate_report(orch.query_summary, context_md)
         full_md = filter_investment_advice(full_md)
+        full_md = ensure_investment_caution_section(full_md)
         full_md = ensure_disclaimer(full_md)
 
         one_line = self._extract_one_line_summary(full_md)
@@ -220,17 +227,55 @@ class ReportGeneratorAgent:
         try:
             response = self._client.messages.create(
                 model=_MODEL,
-                max_tokens=2048,
+                max_tokens=_REPORT_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
-            report = response.content[0].text.strip()
+            report = self._extract_text(response)
+            if response.stop_reason == "max_tokens" and report:
+                logger.warning("[ReportGenerator] 출력 토큰 한도 도달, 리포트를 이어서 생성합니다.")
+                continuation = self._continue_report(prompt, report)
+                if continuation:
+                    report = f"{report.rstrip()}\n{continuation.lstrip()}"
             return report if report else context_md
         except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as e:
             logger.error("[ReportGenerator] Claude 호출 실패: %s", e)
             return (
                 f"## 분석 결과\n\n{context_md}\n\n"
-                "> ⚠️ AI 리포트 자동 생성에 실패했습니다. 원본 데이터를 표시합니다."
+                "> AI 리포트 자동 생성에 실패해 수집된 원본 데이터를 표시합니다."
             )
+
+    def _continue_report(self, original_prompt: str, partial_report: str) -> str:
+        """토큰 한도로 잘린 리포트의 남은 부분만 이어서 생성한다."""
+        try:
+            response = self._client.messages.create(
+                model=_MODEL,
+                max_tokens=_CONTINUATION_MAX_TOKENS,
+                messages=[
+                    {"role": "user", "content": original_prompt},
+                    {"role": "assistant", "content": partial_report},
+                    {
+                        "role": "user",
+                        "content": (
+                            "응답이 토큰 한도로 중간에 끊겼습니다. "
+                            "이미 작성한 내용을 반복하지 말고 끊긴 지점부터 이어서 작성하세요. "
+                            "마지막에는 반드시 '### 투자 유의사항' 섹션을 완결하세요."
+                        ),
+                    },
+                ],
+            )
+            return self._extract_text(response)
+        except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as e:
+            logger.warning("[ReportGenerator] 리포트 이어쓰기 실패, 후처리로 보완합니다: %s", e)
+            return ""
+
+    @staticmethod
+    def _extract_text(response: anthropic.types.Message) -> str:
+        """Claude 응답의 모든 text 블록을 하나의 문자열로 합친다."""
+        return "\n".join(
+            block.text
+            for block in response.content
+            if block.type == "text" and block.text
+        ).strip()
 
     # ── 내부: 섹션 추출 헬퍼 ────────────────────────────────────────────────
 
