@@ -3,14 +3,18 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+_SECTOR_FALLBACKS = {
+    "086520.KQ": "Basic Materials",  # 에코프로
+}
+
 
 def get_company_sector(ticker: str) -> Optional[str]:
     """Yahoo Finance에서 종목 섹터를 반환한다."""
     try:
         info = yf.Ticker(ticker).info
-        return info.get("sector") or info.get("industry") or None
+        return info.get("sector") or info.get("industry") or _SECTOR_FALLBACKS.get(ticker)
     except Exception:
-        return None
+        return _SECTOR_FALLBACKS.get(ticker)
 
 
 def get_company_sectors(tickers: list[str], max_workers: int = 6) -> dict[str, str]:
