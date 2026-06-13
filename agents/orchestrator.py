@@ -152,7 +152,7 @@ class OrchestratorAgent:
 
         # Step 3: 종목 질문이면 ticker 해석
         if orch_output.intent == IntentType.STOCK_QUERY and orch_output.company_name:
-            return self._resolve_ticker_and_plan(orch_output)
+            return self._resolve_ticker_and_plan(orch_output, user_input)
 
         # 포트폴리오·용어·시장 동향은 ticker 불필요 → 바로 계획 수립
         return self._make_execution_plan(orch_output)
@@ -246,7 +246,11 @@ class OrchestratorAgent:
 
     # ── 내부 메서드: ticker 해석 ──────────────────────────────────────────────
 
-    def _resolve_ticker_and_plan(self, orch_output: OrchestratorOutput) -> ExecutionPlan:
+    def _resolve_ticker_and_plan(
+        self,
+        orch_output: OrchestratorOutput,
+        original_query: str,
+    ) -> ExecutionPlan:
         """
         company_name으로 ticker를 해석하고 결과에 따라 분기한다.
         - 확정 → 실행 계획 반환
@@ -255,7 +259,7 @@ class OrchestratorAgent:
         """
         company_name = orch_output.company_name
         try:
-            result: ResolveResult = resolve_company(company_name)
+            result: ResolveResult = resolve_company(company_name, original_query)
         except Exception as e:
             # stock_resolver 오류는 치명적이지 않으므로 ticker 없이 진행
             logger.warning("[Orchestrator] stock_resolver 오류 (%s). ticker 없이 진행합니다.", e)

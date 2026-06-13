@@ -4,9 +4,9 @@ tools/stock_resolver.py
 KRX 전체 종목 목록을 pyKrx로 조회해 자연어 회사명을 ticker로 변환한다.
 
 해석 흐름:
-  입력 → fuzzy match → 신뢰도 HIGH → ticker 확정 (is_confirmed=True)
-                     → 신뢰도 MID  → 후보 반환   (is_confirmed=False)
-                     → 신뢰도 LOW  → 결과 없음    (candidates=[])
+  입력 → 정식 종목명 정확 일치 → ticker 확정 (is_confirmed=True)
+       → 부분 일치·별칭        → 후보 반환   (is_confirmed=False)
+       → 관련 종목 없음        → 결과 없음    (candidates=[])
 
 종목 목록은 로컬 큐레이션 목록과 portfolio.json을 기본으로 구성하고,
 Yahoo Finance에서 섹터를 보완해 일별 JSON 캐시에 저장한다.
@@ -16,6 +16,7 @@ pyKrx 조회는 STOCK_CATALOG_PROVIDER=pykrx로 명시한 경우에만 시도한
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Optional
@@ -29,8 +30,7 @@ _CACHE_DIR  = os.path.join(os.path.dirname(__file__), ".cache")
 _CACHE_FILE = os.path.join(_CACHE_DIR, "krx_{date}.json")
 _PORTFOLIO_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "portfolio.json")
 
-# ─── 신뢰도 임계값 (0~100) ──────────────────────────────────────────────────
-CONFIDENCE_AUTO    = 85   # 이상: 자동 확정
+# ─── 후보 검색 설정 ─────────────────────────────────────────────────────────
 CONFIDENCE_SUGGEST = 50   # 이상: 후보로 표시 / 미만: 무시
 MAX_CANDIDATES     = 3    # 사용자에게 보여줄 최대 후보 수
 
@@ -261,12 +261,24 @@ def _get_cache() -> dict:
 
 
 # ─── 공개 API ────────────────────────────────────────────────────────────────
-def resolve_company(query: str) -> ResolveResult:
+def _is_exact_name_mentioned(name: str, text: str) -> bool:
+    """정식 종목명이 원문에서 독립된 이름으로 언급됐는지 확인한다."""
+    particle_or_boundary = (
+        r"(?=$|[^0-9A-Za-z가-힣]|"
+        r"은|는|이|가|을|를|의|도|만|와|과|로|으로|에서|에게)"
+    )
+    pattern = rf"(?<![0-9A-Za-z가-힣]){re.escape(name)}{particle_or_boundary}"
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
+
+def resolve_company(query: str, original_query: Optional[str] = None) -> ResolveResult:
     """
     자연어 회사명·별칭으로 KRX ticker를 찾는다.
 
     Args:
-        query: 사용자가 입력한 회사명 또는 축약어 (예: "삼전", "에코")
+        query: Orchestrator가 추출한 회사명 또는 축약어 (예: "삼전", "에코")
+        original_query: 사용자의 원문 질문. 정식 종목명이 원문에 직접 등장한
+            경우에만 자동 확정하기 위해 사용한다.
 
     Returns:
         ResolveResult:
@@ -289,6 +301,25 @@ def resolve_company(query: str) -> ResolveResult:
         return ResolveResult(
             query=query, ticker=None, name=None,
             confidence=0.0, is_confirmed=False,
+        )
+
+    # LLM이 "에코"를 "에코프로"로 임의 확장할 수 있으므로, 자동 확정은
+    # 원문에 등록된 정식 종목명이 직접 등장한 경우에만 허용한다.
+    source = original_query or query
+    exact_names = [
+        name for name in name_list
+        if _is_exact_name_mentioned(name, source)
+    ]
+    if exact_names:
+        # 이름이 겹치는 종목이 함께 감지된 경우 가장 구체적인 이름을 우선한다.
+        exact_name = max(exact_names, key=lambda name: len(name.replace(" ", "")))
+        ticker = name_to_ticker[exact_name]
+        return ResolveResult(
+            query=query,
+            ticker=ticker,
+            name=exact_name,
+            confidence=100.0,
+            is_confirmed=True,
         )
 
     # rapidfuzz WRatio: 부분 일치·순서 모두 고려하는 복합 스코어
@@ -322,15 +353,12 @@ def resolve_company(query: str) -> ResolveResult:
             confidence=round(score, 1),
         ))
 
-    best = candidates[0]
-    is_confirmed = best.confidence >= CONFIDENCE_AUTO
-
     return ResolveResult(
         query=query,
-        ticker=best.ticker if is_confirmed else None,
-        name=best.name if is_confirmed else None,
-        confidence=best.confidence,
-        is_confirmed=is_confirmed,
+        ticker=None,
+        name=None,
+        confidence=candidates[0].confidence,
+        is_confirmed=False,
         candidates=candidates,
     )
 
