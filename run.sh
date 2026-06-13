@@ -26,13 +26,24 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# ANTHROPIC_API_KEY 값이 비어 있는지 확인
+# .env 로드 (주석 라인·공백 안전하게 처리)
 # shellcheck disable=SC1091
 source .env 2>/dev/null || true
-if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ "$ANTHROPIC_API_KEY" = "your_anthropic_api_key_here" ]; then
+
+# ── ANTHROPIC_API_KEY 확인 ───────────────────────────────────────────────────
+if [ -z "${ANTHROPIC_API_KEY:-}" ] || [ "${ANTHROPIC_API_KEY}" = "your_anthropic_api_key_here" ]; then
     echo "[!] .env 파일의 ANTHROPIC_API_KEY가 설정되지 않았습니다."
     echo "    https://console.anthropic.com/ 에서 키를 발급받아 .env에 입력해 주세요."
     exit 1
+fi
+
+# ── EMBEDDING_PROVIDER=openai 일 때 OPENAI_API_KEY 확인 ─────────────────────
+if [ "${EMBEDDING_PROVIDER:-local}" = "openai" ]; then
+    if [ -z "${OPENAI_API_KEY:-}" ] || [ "${OPENAI_API_KEY}" = "your_openai_api_key_here" ]; then
+        echo "[!] .env의 EMBEDDING_PROVIDER=openai 이지만 OPENAI_API_KEY가 설정되지 않았습니다."
+        echo "    .env에 OPENAI_API_KEY를 추가하거나 EMBEDDING_PROVIDER=local 로 변경하세요."
+        exit 1
+    fi
 fi
 
 # ── 가상환경 활성화 ──────────────────────────────────────────────────────────
