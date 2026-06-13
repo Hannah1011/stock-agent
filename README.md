@@ -20,22 +20,29 @@
 
 아래 경로에 캡처 이미지 또는 GIF를 추가한 뒤 링크의 주석을 해제하면 됩니다.
 
-권장 파일명:
+- 특정 종목에 대해 질문했을 때
+  
+  <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 39 02 AM" src="https://github.com/user-attachments/assets/238748d2-4079-4efd-b896-404d4c786383" />
+  
+- 시장 동향에 대해 질문했을 때
 
-- `docs/screenshots/home.png`: 첫 화면
-- `docs/screenshots/stock-report.png`: 종목 분석 결과
-- `docs/screenshots/agent-process.gif`: 에이전트 실행 과정
-- `docs/screenshots/portfolio-report.png`: 포트폴리오 분석 결과
+  <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 47 45 AM" src="https://github.com/user-attachments/assets/0fa908a7-755a-434a-a887-446bca46d1d4" />
 
-<!--
-![첫 화면](docs/screenshots/home.png)
+- 나의 포트폴리오에 대해 질문했을 때
 
-![종목 분석 결과](docs/screenshots/stock-report.png)
+  <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 50 16 AM" src="https://github.com/user-attachments/assets/05906a64-80e1-4821-9820-2b35ec31e0d8" />
 
-![에이전트 실행 과정](docs/screenshots/agent-process.gif)
+- 금융 용어에 대해 질문했을 때
 
-![포트폴리오 분석 결과](docs/screenshots/portfolio-report.png)
--->
+  <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 52 33 AM" src="https://github.com/user-attachments/assets/7b26d9c3-28de-408d-ac3f-86ae265e2734" />
+
+- 범위 밖의 질문했을 때 (가드레일)
+
+  <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 56 08 AM" src="https://github.com/user-attachments/assets/66d13086-0608-467b-885d-1d27bdef73e7" />
+
+- 종목명 매칭 신뢰도 낮을 때 (HITL)
+
+  
 
 ## 에이전트 종류와 역할
 
@@ -280,7 +287,7 @@ http://localhost:8501
 | 포트폴리오 | 내 포트폴리오의 종목별 위험도와 개선할 점을 분석해줘. |
 | 금융 용어 | 주식 시장에서 공매도가 무엇인지 쉽게 설명해줘. |
 | 범위 밖 질문 | 서울에서 주말에 가기 좋은 맛집을 추천해줘. |
-| 종목명 매칭 신뢰도 낮음 | 애플전자 최근 주가와 뉴스를 분석해줘. |
+| 종목명 매칭 신뢰도 낮음 | 에코 최근 주가와 뉴스를 분석해줘. |
 ```
 
 특정 종목 질문에서는 News Collector와 Chart Analyst가 병렬 실행됩니다. 답변 상단의 `에이전트 사고 과정`을 열면 실행된 에이전트와 상태를 확인할 수 있습니다.
