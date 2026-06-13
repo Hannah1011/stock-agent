@@ -83,18 +83,22 @@ _CSS = """
     display: none !important;
 }
 
-/* ── 메인 컨테이너 여백 (헤더 숨겼으므로 상단 여백 줄임) ── */
+/* ── 메인 컨테이너: 중앙 정렬 + 여백 ── */
 .block-container {
     padding-top: 1.2rem !important;
     padding-bottom: 6rem !important;
     max-width: 820px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
-/* ── 하단 입력 영역 흰색 완전 제거 ── */
+/* ── 하단 입력 영역: 앱 배경 그라디언트와 동일 톤으로 통일 ── */
 [data-testid="stBottom"],
 [data-testid="stBottom"] > div,
-[data-testid="stBottomBlockContainer"] {
-    background: #0D1B3E !important;
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 /* ── Streamlit 푸터 숨김 ── */
@@ -147,22 +151,35 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     word-break: keep-all !important;
 }
 
-/* ── 채팅 입력창 — 유리 필드 ── */
+/* ── 채팅 입력창 — 4개 박스와 동일한 유리 톤 ── */
+/* 내부 요소 흰색 전부 제거 */
+[data-testid="stChatInput"],
+[data-testid="stChatInput"] *,
+[data-testid="stChatInput"] div,
+[data-testid="stChatInput"] textarea,
+[data-testid="stChatInput"] input {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+/* 외곽 유리 카드 (제안 박스와 동일 스타일) */
 [data-testid="stChatInput"] > div {
     background: rgba(255, 255, 255, 0.07) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.18) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18) !important;
 }
 [data-testid="stChatInput"] textarea {
-    background: transparent !important;
     color: rgba(255, 255, 255, 0.9) !important;
     caret-color: #3182F6 !important;
 }
 [data-testid="stChatInput"] textarea::placeholder {
-    color: rgba(255, 255, 255, 0.32) !important;
+    color: rgba(255, 255, 255, 0.28) !important;
+    font-size: 13px !important;
+}
+[data-testid="stChatInput"] textarea {
+    font-size: 14px !important;
 }
 
 /* ── expander — 유리 패널 ── */
@@ -185,15 +202,16 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    border-radius: 12px !important;
+    border-radius: 100px !important;
     color: rgba(255, 255, 255, 0.78) !important;
     font-size: 13px !important;
     font-weight: 500 !important;
     transition: all 0.18s ease !important;
-    white-space: pre-line !important;
+    white-space: pre-wrap !important;
     text-align: left !important;
+    justify-content: flex-start !important;
     line-height: 1.5 !important;
-    padding: 0.55rem 1rem !important;
+    padding: 0.55rem 1.1rem !important;
 }
 .stButton > button:hover {
     background: rgba(49, 130, 246, 0.28) !important;
@@ -202,6 +220,14 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
     box-shadow: 0 0 18px rgba(49, 130, 246, 0.24) !important;
 }
 .stButton > button:active { transform: scale(0.97) !important; }
+/* 버튼 내부 텍스트 좌측 정렬 — Streamlit 내부 flex 오버라이드 */
+.stButton > button > div,
+.stButton > button p,
+.stButton > button span {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    margin: 0 !important;
+}
 
 /* ── 구분선 ── */
 hr { border-color: rgba(255, 255, 255, 0.07) !important; }
@@ -390,7 +416,7 @@ def _render_assistant_body(msg: dict) -> None:
     """assistant 메시지 1건의 본문을 렌더링한다."""
     if msg.get("log_text"):
         label = f"에이전트 사고 과정  ·  {msg.get('log_summary', '')}"
-        with st.expander(label, expanded=False):
+        with st.expander(label, expanded=True):
             st.markdown(msg["log_text"])
 
     msg_type = msg.get("type", "text")
@@ -449,8 +475,15 @@ def _render_empty_state() -> None:
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        '<p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.36);'
+        'letter-spacing:0.1em;text-transform:uppercase;margin:1.6rem 0 0.6rem 0;">'
+        '이런 질문을 해보세요</p>',
+        unsafe_allow_html=True,
+    )
+
     for category, query in SUGGESTIONS:
-        btn_label = f"{category}\n{query}"
+        btn_label = f"[{category}]  {query}"
         if st.button(btn_label, key=f"sug_{query[:8]}", use_container_width=True):
             _submit(query)
 
@@ -592,13 +625,21 @@ def _handle_processing() -> bool:
         st.session_state.processing = False
         return False
 
-    # 스피너 이전에 기존 히스토리(사용자 메시지 포함) 먼저 표시
+    # 기존 히스토리(사용자 메시지 포함) 먼저 표시
     _render_messages()
 
     workflow = _get_workflow()
     monitor  = MonitoringService()
 
     with st.chat_message("assistant", avatar="🤖"):
+        # 로딩 중 사고 과정 토글 — 클릭하면 "분석 중..." 메시지 노출
+        with st.expander("에이전트 사고 과정 보기", expanded=False):
+            st.markdown(
+                '<p style="font-size:13px;color:rgba(200,220,255,0.6);">'
+                '분석 중입니다...</p>',
+                unsafe_allow_html=True,
+            )
+
         with st.spinner("에이전트가 분석 중입니다..."):
             try:
                 if ticker:
@@ -612,17 +653,15 @@ def _handle_processing() -> bool:
                 st.session_state.processing = False
                 return True
 
-        log_text = monitor.format_for_expander()
-        summary  = monitor.format_summary()
-        result_msg = _build_result_msg(result, log_text, summary, query)
-
-        # 결과를 즉시 렌더링
-        _render_assistant_body(result_msg)
+    log_text   = monitor.format_for_expander()
+    summary    = monitor.format_summary()
+    result_msg = _build_result_msg(result, log_text, summary, query)
 
     st.session_state.messages.append(result_msg)
     st.session_state.processing = False
+    # st.rerun()이 실행되면 _render_messages()에서 실제 로그와 리포트를 렌더링
     st.rerun()
-    return True  # st.rerun()이 중단시키므로 실제 도달하지 않음
+    return True
 
 
 def _build_result_msg(
