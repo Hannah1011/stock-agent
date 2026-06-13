@@ -137,11 +137,15 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
 /* ── 채팅 내 텍스트 흰색 ── */
 [data-testid="stChatMessage"] p,
 [data-testid="stChatMessage"] li,
-[data-testid="stChatMessage"] strong,
 [data-testid="stChatMessage"] em,
 [data-testid="stChatMessage"] td,
 [data-testid="stChatMessage"] th {
     color: rgba(255, 255, 255, 0.88) !important;
+    font-weight: 400 !important;
+}
+[data-testid="stChatMessage"] strong {
+    color: rgba(255, 255, 255, 0.94) !important;
+    font-weight: 700 !important;
 }
 
 /* ── 테이블 ── */
@@ -245,6 +249,30 @@ footer, [data-testid="stStatusWidget"] { display: none !important; }
 [data-testid="stExpander"] summary .material-symbols-rounded {
     color: rgba(255, 255, 255, 0.5) !important;
     font-size: 20px !important;
+}
+
+/* ── 분석 중 shimmer ── */
+@keyframes thinking-shimmer {
+    0%   { background-position: 180% 0; }
+    100% { background-position: -80% 0; }
+}
+[data-testid="stChatMessage"] .ai-thinking {
+    display: inline-block;
+    margin: 0 !important;
+    background: linear-gradient(
+        100deg,
+        rgba(160, 190, 230, 0.42) 20%,
+        rgba(235, 245, 255, 0.96) 45%,
+        rgba(160, 190, 230, 0.42) 70%
+    );
+    background-size: 220% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+    animation: thinking-shimmer 1.8s linear infinite;
+    font-size: 13px !important;
+    font-weight: 500 !important;
 }
 
 /* ── 버튼 ── */
@@ -623,7 +651,10 @@ def _handle_processing() -> bool:
     with st.chat_message("assistant"):
         # 처리 완료 후 실제 로그로 교체되는 사고 과정 토글
         with st.expander("에이전트 사고 과정 보기", expanded=False):
-            st.empty()
+            st.markdown(
+                '<p class="ai-thinking">에이전트가 분석 중입니다...</p>',
+                unsafe_allow_html=True,
+            )
 
         try:
             if ticker:
