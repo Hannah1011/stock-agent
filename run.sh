@@ -50,13 +50,87 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# ── 고정 포트 확인 ───────────────────────────────────────────────────────────
+PORT=8501
+
+port_is_available() {
+    python -c '
+import socket
+import sys
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    sock.bind(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+finally:
+    sock.close()
+' "$1"
+}
+
+streamlit_is_running() {
+    python -c '
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen("http://localhost:8501/_stcore/health", timeout=1) as response:
+        sys.exit(0 if response.status == 200 else 1)
+except Exception:
+    sys.exit(1)
+'
+}
+
+if ! port_is_available "$PORT"; then
+    if streamlit_is_running; then
+        echo "재테크 AI Agent가 이미 실행 중입니다."
+        echo "브라우저에서 http://localhost:8501 로 접속하세요."
+        exit 0
+    fi
+
+    # 같은 프로젝트에서 실행한 Streamlit이 멈춘 경우에만 종료 후 재시작한다.
+    EXISTING_PID=""
+    if command -v lsof &>/dev/null; then
+        EXISTING_PID="$(lsof -tiTCP:${PORT} -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+    fi
+
+    if [ -n "$EXISTING_PID" ]; then
+        EXISTING_CWD="$(lsof -a -p "$EXISTING_PID" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+        EXISTING_COMMAND="$(ps -p "$EXISTING_PID" -o command= 2>/dev/null || true)"
+
+        if [ "$EXISTING_CWD" = "$SCRIPT_DIR" ] && [[ "$EXISTING_COMMAND" == *"streamlit run app.py"* ]]; then
+            echo "응답하지 않는 기존 앱을 종료하고 8501 포트에서 다시 시작합니다."
+            kill "$EXISTING_PID"
+            for _ in {1..20}; do
+                port_is_available "$PORT" && break
+                sleep 0.25
+            done
+
+            if ! port_is_available "$PORT" && kill -0 "$EXISTING_PID" 2>/dev/null; then
+                echo "기존 앱이 종료되지 않아 강제 종료합니다."
+                kill -9 "$EXISTING_PID"
+                for _ in {1..20}; do
+                    port_is_available "$PORT" && break
+                    sleep 0.25
+                done
+            fi
+        fi
+    fi
+
+    if ! port_is_available "$PORT"; then
+        echo "[!] 포트 8501을 다른 프로그램이 사용 중입니다."
+        echo "    해당 프로그램을 종료한 뒤 다시 실행해 주세요."
+        exit 1
+    fi
+fi
+
 # ── 앱 실행 ─────────────────────────────────────────────────────────────────
 echo "재테크 AI Agent 시작 중…"
-echo "브라우저에서 http://localhost:8501 로 접속하세요."
+echo "브라우저에서 http://localhost:${PORT} 로 접속하세요."
 echo "종료: Ctrl+C"
 echo ""
 
 streamlit run app.py \
-    --server.port 8501 \
+    --server.port "$PORT" \
     --server.address localhost \
     --browser.gatherUsageStats false
