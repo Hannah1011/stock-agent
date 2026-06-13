@@ -288,6 +288,7 @@ class NewsCollectorAgent:
             summary=article.get("summary", "") or "",
             source=article.get("source", "알 수 없음"),
             published_at=article.get("published_at", ""),
+            url=article.get("url") or None,
             relevance_score=article.get("relevance_score", 0.5),
             impact=article.get("impact", "MEDIUM"),
         )
