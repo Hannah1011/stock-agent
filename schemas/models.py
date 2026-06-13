@@ -29,6 +29,7 @@ class NewsItem(BaseModel):
     summary: str
     source: str
     published_at: str
+    url: Optional[str] = None
     relevance_score: float = Field(ge=0, le=1)
     impact: str  # "HIGH" | "MEDIUM" | "LOW"
 
