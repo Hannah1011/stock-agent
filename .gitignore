@@ -1,12 +1,22 @@
+# 환경 변수
 .env
+
+# 생성되는 DB / 캐시 (gitignore해도 앱 실행 시 자동 생성됨)
 rag/chroma_db/
+tools/.cache/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.DS_Store
-.venv/
-venv/
 *.egg-info/
 dist/
 build/
 .pytest_cache/
+
+# 가상환경
+.venv/
+venv/
+
+# OS
+.DS_Store
