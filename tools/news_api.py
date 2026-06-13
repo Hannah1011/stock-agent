@@ -38,20 +38,21 @@ def fetch_newsapi(query: str, page_size: int = 5) -> list[dict]:
         return []
 
 
-def fetch_naver_rss(query: str, display: int = 5) -> list[dict]:
-    """네이버 뉴스 검색 RSS로 기사를 가져온다 (NewsAPI 폴백)."""
-    encoded_query = urllib.parse.quote(query)
-    url = f"https://news.naver.com/search/results.nhn?query={encoded_query}&field=0&where=news"
+def fetch_google_news_rss(query: str, display: int = 5) -> list[dict]:
+    """
+    Google News RSS(한국판)로 기사를 가져온다 (NewsAPI 폴백).
 
-    # 네이버 공식 뉴스 검색 RSS 엔드포인트
+    API 키 불필요. hl=ko&gl=KR로 한국어 기사만 수집한다.
+    """
+    encoded_query = urllib.parse.quote(query)
     rss_url = (
-        f"https://rss.naver.com/main/search.nhn"
-        f"?type=news&query={encoded_query}&display={display}"
+        f"https://news.google.com/rss/search"
+        f"?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     )
     try:
         req = urllib.request.Request(
             rss_url,
-            headers={"User-Agent": "Mozilla/5.0"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; StockAgent/1.0)"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read()
@@ -59,15 +60,17 @@ def fetch_naver_rss(query: str, display: int = 5) -> list[dict]:
         items = root.findall(".//item")
         results = []
         for item in items[:display]:
-            title = _strip_cdata(_get_text(item, "title"))
-            desc = _strip_cdata(_get_text(item, "description"))
+            title    = _strip_cdata(_get_text(item, "title"))
             pub_date = _get_text(item, "pubDate")
-            link = _get_text(item, "link")
+            link     = _get_text(item, "link")
+            # Google News RSS는 description이 없으므로 제목을 요약으로 사용
+            source_el = item.find("{https://news.google.com/rss}source")
+            source = source_el.text if source_el is not None else "Google News"
             results.append(
                 {
                     "title": title,
-                    "summary": desc,
-                    "source": "네이버뉴스",
+                    "summary": "",
+                    "source": source,
                     "published_at": pub_date,
                     "url": link,
                 }
@@ -89,7 +92,7 @@ def fetch_news(keywords: list[str], max_per_keyword: int = 3) -> list[dict]:
     for kw in keywords:
         articles = fetch_newsapi(kw, page_size=max_per_keyword)
         if not articles:
-            articles = fetch_naver_rss(kw, display=max_per_keyword)
+            articles = fetch_google_news_rss(kw, display=max_per_keyword)
 
         for art in articles:
             title = art.get("title", "").strip()
