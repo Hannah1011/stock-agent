@@ -103,6 +103,41 @@ class FinalReport(BaseModel):
     full_report_md: str
 
 
+class ClarificationCandidate(BaseModel):
+    """사용자에게 종목 확인을 요청할 때 보여줄 후보 항목."""
+    ticker: str
+    name: str
+    market: str   # "KOSPI" | "KOSDAQ"
+    sector: str
+    confidence: float
+
+
+class ExecutionPlan(BaseModel):
+    """
+    Orchestrator가 수립한 실행 계획.
+
+    parallel_groups: 각 내부 리스트가 하나의 병렬 실행 그룹.
+      그룹 간 순서 = 실행 순서.
+      예) [["NewsCollector","ChartAnalyst"], ["TermExplainer"], ["ReportGenerator"]]
+
+    상태 플래그 (셋 중 하나만 True):
+      - 정상 실행: rejection_message=None, needs_clarification=False
+      - 범위 외:   rejection_message 설정
+      - ticker 불명확: needs_clarification=True, clarification_candidates 설정
+    """
+    orchestrator_output: OrchestratorOutput
+    agents_to_run: List[str]           # 평탄화된 실행 목록 (모니터링용)
+    parallel_groups: List[List[str]]   # 실제 실행 그룹
+
+    # 범위 외 질문일 때 설정
+    rejection_message: Optional[str] = None
+
+    # ticker가 불명확할 때 설정
+    needs_clarification: bool = False
+    clarification_message: Optional[str] = None
+    clarification_candidates: List[ClarificationCandidate] = Field(default_factory=list)
+
+
 class AgentLog(BaseModel):
     timestamp: str
     agent: str          # "Orchestrator" | "News Collector" | ...
