@@ -1,6 +1,27 @@
 import yfinance as yf
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+
+
+def get_company_sector(ticker: str) -> Optional[str]:
+    """Yahoo Finance에서 종목 섹터를 반환한다."""
+    try:
+        info = yf.Ticker(ticker).info
+        return info.get("sector") or info.get("industry") or None
+    except Exception:
+        return None
+
+
+def get_company_sectors(tickers: list[str], max_workers: int = 6) -> dict[str, str]:
+    """여러 종목의 Yahoo Finance 섹터를 병렬 조회한다."""
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        sectors = executor.map(get_company_sector, tickers)
+    return {
+        ticker: sector
+        for ticker, sector in zip(tickers, sectors)
+        if sector
+    }
 
 
 def get_current_price(ticker: str) -> Optional[dict]:

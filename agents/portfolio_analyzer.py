@@ -38,7 +38,7 @@ from schemas.models import (
     PortfolioAnalyzerOutput,
     RiskScore,
 )
-from tools.stock_api import get_current_price
+from tools.stock_api import get_company_sector, get_current_price
 from tools.stock_resolver import get_sector_by_ticker
 
 load_dotenv()
@@ -196,10 +196,12 @@ class PortfolioAnalyzerAgent:
         sector_totals: dict[str, float] = {}
         for h in holdings:
             try:
-                sector = get_sector_by_ticker(h.ticker) or "기타"
+                sector = get_sector_by_ticker(h.ticker) or get_company_sector(h.ticker)
             except Exception as e:
                 logger.debug("[PortfolioAnalyzer] 섹터 조회 실패 (%s): %s", h.ticker, e)
-                sector = "기타"
+                sector = None
+            # 섹터 미상 종목을 하나의 '기타'로 합치면 집중도가 100%로 왜곡된다.
+            sector = sector or f"기타 ({h.name})"
             sector_totals[sector] = sector_totals.get(sector, 0.0) + h.eval_amount
 
         # 비율 변환 후 비중 내림차순 정렬

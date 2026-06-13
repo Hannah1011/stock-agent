@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ─── 경로 ───────────────────────────────────────────────────────────────────
 _CACHE_DIR  = os.path.join(os.path.dirname(__file__), ".cache")
 _CACHE_FILE = os.path.join(_CACHE_DIR, "krx_{date}.json")
+_PORTFOLIO_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "portfolio.json")
 
 # ─── 신뢰도 임계값 (0~100) ──────────────────────────────────────────────────
 CONFIDENCE_AUTO    = 85   # 이상: 자동 확정
@@ -86,6 +87,53 @@ def _cleanup_old_caches(keep_date: str) -> None:
                     logger.warning("[stock_resolver] 구 캐시 삭제 실패 (%s): %s", fname, e)
 
 
+def _is_valid_cache(data: dict) -> bool:
+    """종목과 이름 매핑이 모두 있는 캐시만 유효한 것으로 본다."""
+    return bool(data.get("stocks") and data.get("name_to_ticker"))
+
+
+def _build_fallback_catalog(biz_date: str) -> dict:
+    """
+    KRX 조회 실패 시 앱 내 큐레이션 종목과 portfolio.json으로 최소 목록을 만든다.
+    """
+    from tools.keyword_map import TICKER_KEYWORD_MAP
+    from tools.stock_api import get_company_sectors
+
+    ticker_to_name = {
+        ticker: keywords[0]
+        for ticker, keywords in TICKER_KEYWORD_MAP.items()
+        if keywords
+    }
+
+    portfolio_path = os.getenv("PORTFOLIO_PATH", _PORTFOLIO_FILE)
+    try:
+        with open(portfolio_path, encoding="utf-8") as f:
+            for holding in json.load(f).get("holdings", []):
+                ticker = holding.get("ticker")
+                name = holding.get("name")
+                if ticker and name:
+                    ticker_to_name[ticker] = name
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    sectors = get_company_sectors(list(ticker_to_name))
+    stocks = [
+        {
+            "ticker": ticker,
+            "name": name,
+            "market": "KOSPI" if ticker.endswith(".KS") else "KOSDAQ",
+            "sector": sectors.get(ticker, ""),
+        }
+        for ticker, name in ticker_to_name.items()
+    ]
+    return {
+        "date": biz_date,
+        "stocks": stocks,
+        "name_to_ticker": {stock["name"]: stock["ticker"] for stock in stocks},
+        "source": "fallback",
+    }
+
+
 def _fetch_from_krx(biz_date: str) -> dict:
     """
     KOSPI + KOSDAQ 전체 종목을 pyKrx로 조회해 구조화된 딕셔너리로 반환한다.
@@ -104,19 +152,22 @@ def _fetch_from_krx(biz_date: str) -> dict:
     name_to_ticker: dict[str, str] = {}
 
     for market, suffix in [("KOSPI", ".KS"), ("KOSDAQ", ".KQ")]:
-        # 섹터 정보 조회 (실패해도 종목 목록 조회는 계속)
-        sector_df = None
-        try:
-            sector_df = krx.get_market_sector_classifications(biz_date, market)
-        except Exception as e:
-            logger.warning("[stock_resolver] %s 섹터 조회 실패 (섹터 없이 계속): %s", market, e)
-
         # 종목 코드 목록 조회
         try:
             raw_tickers = krx.get_market_ticker_list(biz_date, market=market)
         except Exception as e:
             logger.error("[stock_resolver] %s 종목 목록 조회 실패: %s", market, e)
             continue
+        if not raw_tickers:
+            logger.warning("[stock_resolver] %s 종목 목록이 비어 있습니다.", market)
+            continue
+
+        # 종목 목록이 있을 때만 섹터 정보를 조회한다.
+        sector_df = None
+        try:
+            sector_df = krx.get_market_sector_classifications(biz_date, market)
+        except Exception as e:
+            logger.warning("[stock_resolver] %s 섹터 조회 실패 (섹터 없이 계속): %s", market, e)
 
         for raw_ticker in raw_tickers:
             full_ticker = raw_ticker + suffix
@@ -165,12 +216,18 @@ def _load_cache() -> dict:
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as f:
-                return json.load(f)
+                cached = json.load(f)
+            if _is_valid_cache(cached):
+                return cached
+            logger.warning("[stock_resolver] 빈 KRX 캐시를 무시하고 다시 조회합니다.")
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("[stock_resolver] 캐시 손상, 재빌드합니다: %s", e)
 
     logger.info("[stock_resolver] KRX 종목 목록 갱신 중 (거래일: %s)…", biz_date)
     data = _fetch_from_krx(biz_date)
+    if not _is_valid_cache(data):
+        logger.warning("[stock_resolver] KRX 종목 조회 실패, 로컬 폴백 목록을 사용합니다.")
+        data = _build_fallback_catalog(biz_date)
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
     try:
@@ -220,7 +277,7 @@ def resolve_company(query: str) -> ResolveResult:
     name_list = list(name_to_ticker.keys())
 
     if not name_list:
-        logger.error("[stock_resolver] 종목 목록이 비어 있습니다.")
+        logger.warning("[stock_resolver] 사용할 수 있는 종목 목록이 없습니다.")
         return ResolveResult(
             query=query, ticker=None, name=None,
             confidence=0.0, is_confirmed=False,
