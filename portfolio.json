@@ -1,0 +1,22 @@
+{
+  "holdings": [
+    {
+      "ticker": "005930.KS",
+      "name": "삼성전자",
+      "shares": 10,
+      "avg_price": 68000
+    },
+    {
+      "ticker": "035420.KS",
+      "name": "NAVER",
+      "shares": 3,
+      "avg_price": 185000
+    },
+    {
+      "ticker": "051910.KS",
+      "name": "LG화학",
+      "shares": 2,
+      "avg_price": 320000
+    }
+  ]
+}
