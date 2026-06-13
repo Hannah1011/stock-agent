@@ -255,7 +255,7 @@ class OrchestratorAgent:
         company_name으로 ticker를 해석하고 결과에 따라 분기한다.
         - 확정 → 실행 계획 반환
         - 후보 여러 개 → 사용자 확인 요청 플랜 반환
-        - 매칭 없음 → ticker 없이 뉴스 중심으로 실행
+        - 매칭 없음 → 분석을 중단하고 정확한 종목명 입력 요청
         """
         company_name = orch_output.company_name
         try:
@@ -285,9 +285,12 @@ class OrchestratorAgent:
             )
             return self._make_clarification_plan(orch_output, result)
 
-        # 관련 종목을 전혀 찾지 못함 → ticker 없이 뉴스 위주 실행
-        logger.info("[Orchestrator] '%s' 종목을 찾을 수 없습니다. ticker 없이 진행합니다.", company_name)
-        return self._make_execution_plan(orch_output)
+        # 관련 종목을 전혀 찾지 못하면 잘못된 뉴스·리포트 생성을 막는다.
+        logger.info("[Orchestrator] '%s' 종목을 찾을 수 없어 실행을 중단합니다.", company_name)
+        return self._make_rejection_plan(
+            f"'{company_name}'에 해당하는 종목을 찾지 못했습니다. "
+            "상장된 정식 종목명을 확인해서 다시 입력해 주세요."
+        )
 
     # ── 내부 메서드: 플랜 생성 ───────────────────────────────────────────────
 
