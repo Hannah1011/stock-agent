@@ -40,7 +40,15 @@
 
   <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 56 08 AM" src="https://github.com/user-attachments/assets/66d13086-0608-467b-885d-1d27bdef73e7" />
 
-- 종목명 매칭 신뢰도 낮을 때 (HITL)
+- 종목명 후보 선택해야 할 때 (HITL)
+
+  <img width="320" height="434" alt="Screen Recording 2026-06-14 at 4 14 16 AM" src="https://github.com/user-attachments/assets/3fcba41d-f64b-442f-aee1-98aff95fa9e7" />
+
+
+- 존재하지 않는 종목을 질문했을 때
+
+  <img width="320" height="496" alt="Screen Recording 2026-06-14 at 4 19 01 AM" src="https://github.com/user-attachments/assets/659612be-8217-4c77-93c7-d7869e07a4cb" />
+
 
   
 
