@@ -22,6 +22,8 @@ rag/retriever.py
   build_vectordb.py와 동일한 제공자를 사용해야 한다.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -41,9 +43,10 @@ from rank_bm25 import BM25Okapi
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-CHROMA_DIR      = os.path.join(SCRIPT_DIR, "chroma_db")
-CORPUS_PATH     = os.path.join(SCRIPT_DIR, "terms_corpus", "economy_terms.json")
-COLLECTION_NAME = "economy_terms"
+CHROMA_DIR           = os.path.join(SCRIPT_DIR, "chroma_db")
+CORPUS_PATH          = os.path.join(SCRIPT_DIR, "terms_corpus", "economy_terms.json")
+DYNAMIC_TERMS_PATH   = os.path.join(SCRIPT_DIR, "terms_corpus", "dynamic_terms.json")
+COLLECTION_NAME      = "economy_terms"
 
 # Hybrid Search 파라미터
 _RRF_K          = 60    # RRF 상수 (클수록 상위 랭크 과점 완화)
@@ -110,30 +113,51 @@ def _get_bm25() -> tuple[BM25Okapi, list[dict]]:
     """
     BM25 인덱스 싱글턴을 반환한다.
 
-    ChromaDB와 달리 BM25는 파일로 저장하지 않고 매번 corpus에서 즉시 빌드한다.
-    용어 수(80개)가 적으므로 빌드 시간이 무시할 수준이다.
+    정적 corpus(economy_terms.json)와 동적 corpus(dynamic_terms.json)를
+    합쳐서 하나의 인덱스로 관리한다. dynamic_terms.json에 새 용어가 추가될 때마다
+    _invalidate_bm25()를 호출해 인덱스를 무효화하면 다음 조회 시 재빌드된다.
 
     토큰화: 공백 분리 + 용어명 단독 추가
-      한국어는 조사가 붙어있어 "기준금리를"이 "기준금리"와 다르게 인식될 수 있다.
-      용어명을 별도 토큰으로 추가해 정확 매칭 확률을 높인다.
+      용어명을 첫 번째 토큰으로 한 번 더 추가해 정확 매칭 가중치를 부여한다.
+      예) "기준금리" → ["기준금리", "기준금리", "중앙은행이", "정하는", ...]
     """
     global _bm25_index, _bm25_corpus
     if _bm25_index is None:
+        # 정적 용어 로드
         with open(CORPUS_PATH, encoding="utf-8") as f:
-            terms = json.load(f)
+            terms: list[dict] = json.load(f)
+
+        # 동적 용어 병합 (존재하는 경우)
+        if os.path.exists(DYNAMIC_TERMS_PATH):
+            try:
+                with open(DYNAMIC_TERMS_PATH, encoding="utf-8") as f:
+                    dynamic = json.load(f)
+                existing_names = {t["term"] for t in terms}
+                # 중복 제거: 이미 정적 corpus에 있는 용어는 무시
+                terms += [d for d in dynamic if d.get("term") not in existing_names]
+                logger.debug("[RAG] BM25 인덱스: 정적 %d + 동적 %d = 총 %d개",
+                             len(json.load(open(CORPUS_PATH, encoding="utf-8"))),
+                             len(dynamic), len(terms))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("[RAG] dynamic_terms.json 로드 실패: %s", e)
 
         tokenized_corpus: list[list[str]] = []
         for term in terms:
             text = f"{term['term']} {term['explanation']}"
-            tokens = text.split()
-            # 용어명 자체를 첫 번째 토큰으로 한 번 더 추가 → 정확 매칭 가중치 부여
-            tokens = [term["term"]] + tokens
+            tokens = [term["term"]] + text.split()   # 용어명 가중치 부여
             tokenized_corpus.append(tokens)
 
         _bm25_corpus = terms
         _bm25_index  = BM25Okapi(tokenized_corpus)
 
     return _bm25_index, _bm25_corpus
+
+
+def _invalidate_bm25() -> None:
+    """BM25 인덱스 캐시를 무효화한다. 새 동적 용어 추가 후 호출한다."""
+    global _bm25_index, _bm25_corpus
+    _bm25_index  = None
+    _bm25_corpus = None
 
 
 # ─── Dense 검색 (ChromaDB) ───────────────────────────────────────────────────
@@ -357,6 +381,61 @@ def extract_and_explain_terms(
             break
 
     return [{"term": t, "explanation": e} for t, e in found.items()]
+
+
+def _add_term_to_collection(term: str, explanation: str) -> None:
+    """
+    새로 생성된 동적 용어를 ChromaDB에 추가한다.
+    이후 Dense 검색에서도 해당 용어가 검색 가능해진다.
+    BM25 인덱스도 무효화해 다음 검색 시 재빌드되도록 한다.
+    """
+    try:
+        collection = _get_collection()
+        doc_text   = f"{term}: {explanation}"
+        # hash로 고유 ID 생성 (충돌 가능성 낮음; 동적 용어 수가 적으므로 허용)
+        doc_id     = f"dynamic_{abs(hash(term)) % 100000:05d}"
+        collection.add(
+            documents=[doc_text],
+            metadatas=[{"term": term, "category": "동적생성", "related_terms": ""}],
+            ids=[doc_id],
+        )
+        _invalidate_bm25()   # BM25 인덱스 무효화 → 다음 호출 시 dynamic_terms 포함해 재빌드
+        logger.info("[RAG] 새 용어 ChromaDB 추가: '%s'", term)
+    except Exception as e:
+        logger.warning("[RAG] ChromaDB 추가 실패 ('%s'): %s", term, e)
+
+
+def get_term_explanation_with_fallback(term: str) -> str | None:
+    """
+    RAG에서 먼저 찾고, 없으면 동적 크롤링으로 생성한다.
+
+    1. RAG(Hybrid Search)에서 조회
+    2. 없으면 term_crawler.crawl_and_explain() 호출
+       - dynamic_terms.json 캐시 확인
+       - Wikipedia 조회 → Claude 설명 생성
+       - 결과를 ChromaDB와 BM25에 반영
+
+    Args:
+        term: 설명이 필요한 용어 (예: "FOMC", "내재가치")
+
+    Returns:
+        초보자용 설명 문자열, 또는 완전히 찾을 수 없을 때 None
+    """
+    # 1. 기존 RAG 검색
+    explanation = get_term_explanation(term)
+    if explanation:
+        return explanation
+
+    # 2. 동적 크롤링 폴백
+    logger.info("[RAG] '%s' RAG 미발견 — 동적 생성 시작", term)
+    from rag.term_crawler import crawl_and_explain
+    explanation = crawl_and_explain(term)
+
+    if explanation:
+        # ChromaDB·BM25에 반영해 이후 RAG 검색에서도 찾을 수 있게 한다
+        _add_term_to_collection(term, explanation)
+
+    return explanation
 
 
 def is_db_ready() -> bool:
