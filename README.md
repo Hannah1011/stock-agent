@@ -18,8 +18,6 @@
 
 ## 화면 예시
 
-아래 경로에 캡처 이미지 또는 GIF를 추가한 뒤 링크의 주석을 해제하면 됩니다.
-
 - 특정 종목에 대해 질문했을 때
   
   <img width="320" height="490" alt="Screen Recording 2026-06-14 at 3 39 02 AM" src="https://github.com/user-attachments/assets/238748d2-4079-4efd-b896-404d4c786383" />
